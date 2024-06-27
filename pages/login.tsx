@@ -1,3 +1,10 @@
+// ./pages/login.tsx
+
+// Load & render the '/login' page from Plasmic studio
+// we do this outside of normal catchall routes so it can be publicly accessible without having '/public/' at front of route path
+
+const pageToLoad = '/login';
+
 import * as React from "react";
 import {
   PlasmicComponent,
@@ -5,7 +12,7 @@ import {
   ComponentRenderData,
   PlasmicRootProvider,
 } from "@plasmicapp/loader-nextjs";
-import type { GetStaticPaths, GetStaticProps } from "next";
+import type { GetStaticProps } from "next";
 
 import Error from "next/error";
 import { useRouter } from "next/router";
@@ -26,7 +33,6 @@ export default function PlasmicLoaderPage(props: {
       loader={PLASMIC}
       prefetchedData={plasmicData}
       prefetchedQueryData={queryCache}
-      pageRoute={pageMeta.path}
       pageParams={pageMeta.params}
       pageQuery={router.query}
     >
@@ -35,9 +41,8 @@ export default function PlasmicLoaderPage(props: {
   );
 }
 
-export const getStaticProps: GetStaticProps = async (context) => {
-  const { catchall } = context.params ?? {};
-  const plasmicPath = typeof catchall === 'string' ? catchall : Array.isArray(catchall) ? `/${catchall.join('/')}` : '/';
+export const getStaticProps: GetStaticProps = async () => {
+  const plasmicPath = pageToLoad;
   const plasmicData = await PLASMIC.maybeFetchComponentData(plasmicPath);
   if (!plasmicData) {
     // non-Plasmic catch-all
@@ -49,7 +54,6 @@ export const getStaticProps: GetStaticProps = async (context) => {
     <PlasmicRootProvider
       loader={PLASMIC}
       prefetchedData={plasmicData}
-      pageRoute={pageMeta.path}
       pageParams={pageMeta.params}
     >
       <PlasmicComponent component={pageMeta.displayName} />
@@ -57,16 +61,4 @@ export const getStaticProps: GetStaticProps = async (context) => {
   );
   // Use revalidate if you want incremental static regeneration
   return { props: { plasmicData, queryCache }, revalidate: 60 };
-}
-
-export const getStaticPaths: GetStaticPaths = async () => {
-  const pageModules = await PLASMIC.fetchPages();
-  return {
-    paths: pageModules.map((mod) => ({
-      params: {
-        catchall: mod.path.substring(1).split("/"),
-      },
-    })),
-    fallback: "blocking",
-  };
 }
