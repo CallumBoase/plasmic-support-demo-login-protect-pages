@@ -98,8 +98,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   // const { data: { user } } = await supabase.auth.getUser();
   // const isAuthorized = authorizationCheckFunction(plasmicPath, user);
 
-  //However, for simplicity of this example repo, we randomly determine if user is authorized
-  const isAuthorized = Math.random() > 0.5;
+  //However, for simplicity of this example repo, we hard-code authorized to true or false manually for easy testing
+  const isAuthorized = true;
 
   if(isAuthorized !== true) return {
     redirect: {
