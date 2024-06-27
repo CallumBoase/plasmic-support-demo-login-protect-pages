@@ -18,30 +18,61 @@ import type { GetServerSideProps } from "next";
 import * as React from "react";
 import {
   PlasmicComponent,
-  extractPlasmicQueryData,
-  ComponentRenderData,
   PlasmicRootProvider,
 } from "@plasmicapp/loader-nextjs";
 
 import Error from "next/error";
 import { useRouter } from "next/router";
 import { PLASMIC } from "@/plasmic-init";
+import useSWR from "swr";
 
 export default function PlasmicLoaderPage(props: {
-  plasmicData?: ComponentRenderData;
-  queryCache?: Record<string, any>;
+  plasmicPath: string;
 }) {
-  const { plasmicData, queryCache } = props;
+
   const router = useRouter();
-  if (!plasmicData || plasmicData.entryCompMetas.length === 0) {
+
+  //Fetch the component (page) data from Plasmic and cache it with SWR
+  //Note that when navigating between index.tsx and [...catchall].tsx
+  //A warning  from Plasmic will appear in console https://github.com/plasmicapp/plasmic/blob/7117b4c2de9e89f4435db9efa0cba6a00012c297/packages/loader-react/src/loader-shared.ts#L498
+  //Because maybeFetchComponentData will fetch designs with query string parameter browserOnly=true here
+  //But browserOnly=false from index.tsx
+  //Because fetching of Plasmic componet data is happening client side here, but server side in index.tsx
+  //This does not appear to matter since the referenced file above seems to gracefully handle this case
+
+  const plasmicComponentFetcher = React.useCallback(async () => {
+    return await PLASMIC.maybeFetchComponentData(props.plasmicPath);
+  }, [props.plasmicPath]);
+
+  const { data: plasmicData, error, isValidating } = useSWR(
+    `plasmicData_${props.plasmicPath}`,
+    plasmicComponentFetcher
+  );
+
+  //Render the error page if there is an error
+  if(error) {
+    return <Error statusCode={500} />;
+  }
+
+  //Render a loading message if the data is still loading
+  if(isValidating && !plasmicData) {
+    return <div>Loading...</div>;
+  }
+
+  //Render a 404 page if the page is not found in Plasmic
+  if ((!isValidating && (!plasmicData || plasmicData.entryCompMetas.length === 0))) {
     return <Error statusCode={404} />;
   }
-  const pageMeta = plasmicData.entryCompMetas[0];
+
+  //Extract the page meta data from the Plasmic data
+  const pageMeta = plasmicData!.entryCompMetas[0]
+
+  //Render the Plasmic component (page)
   return (
     <PlasmicRootProvider
       loader={PLASMIC}
-      prefetchedData={plasmicData}
-      prefetchedQueryData={queryCache}
+      prefetchedData={plasmicData!}
+      prefetchedQueryData={{}}
       pageParams={pageMeta.params}
       pageQuery={router.query}
     >
@@ -77,27 +108,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
   }
 
-  //Fetch data for the current page/component from plasmic
-  const plasmicData = await PLASMIC.maybeFetchComponentData(plasmicPath);
-  
-  //If there's no plasmic data, the page does not exist in plasmic. So return nothing
-  //This will ultimately cause a 404 error to be shown by default
-  if (!plasmicData) {
-    // non-Plasmic catch-all
-    return { props: {} };
-  }
-  //Get the metadata for the current page
-  const pageMeta = plasmicData.entryCompMetas[0];
-  //Prefetch any data for the page
-  const queryCache = await extractPlasmicQueryData(
-    <PlasmicRootProvider
-      loader={PLASMIC}
-      prefetchedData={plasmicData}
-      pageParams={pageMeta.params}
-    >
-      <PlasmicComponent component={pageMeta.displayName} />
-    </PlasmicRootProvider>
-  );
-  //Return the plasmic data and the query cache data
-  return { props: { plasmicData, queryCache } };
+  //We don't try and fetch the plasmic component data or data on the page here, because getServerSideProps does not cache
+  //Therefore we would run this every time without cache, causing slow page navigation
+  //Instead, we do that client-side and cache results with SWR (see above)
+
+  return { props: { plasmicPath } };
 }
